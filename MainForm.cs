@@ -3,15 +3,15 @@ using System.Runtime.InteropServices;
 partial class MainForm : Form
 {
     // ── Controls ──────────────────────────────────────────────────────────
-    MenuStrip         menuStrip = null!;
-    Panel             sliderRow = null!;
-    GraphCanvas       canvas    = null!;
-    ToolStripMenuItem graphMenu = null!;
-    CheckBox          toutCheck = null!;
-    CheckBox          distCheck = null!;
-    ToolStripLabel    timeLbl   = null!;
-    Label[]           pLabels   = new Label[4];
-    TrackBar[]        pSliders  = new TrackBar[4];
+    MenuStrip          menuStrip  = null!;
+    GraphCanvas        canvas     = null!;
+    ToolStripMenuItem  graphMenu  = null!;
+    CheckBox           toutCheck  = null!;
+    CheckBox           distCheck  = null!;
+    TrackBar           meshSlider = null!;
+    ToolStripLabel     timeLbl    = null!;
+    Label[]            pLabels    = new Label[4];
+    TrackBar[]         pSliders   = new TrackBar[4];
 
     // ── State ─────────────────────────────────────────────────────────────
     readonly List<Graph> graphs = Enumerable.Range(0, 16)
@@ -47,10 +47,64 @@ partial class MainForm : Form
         BackColor   = AppConfig.Background;
 
         BuildLayout();
-        LoadGraph(0);
+        RestoreSettings();
 
         canvas.ClientSizeChanged += (_, _) => TriggerCompute();
         canvas.MouseClick += OnCanvasClick;
+        FormClosing += (_, _) => SaveSettings();
+    }
+
+    static string SettingsPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "GraphAlgo", "settings.txt");
+
+    void SaveSettings() {
+        try {
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            File.WriteAllLines(SettingsPath, [
+                $"{Width} {Height}",
+                $"{activeGraph}",
+                $"{(toutCheck.Checked?1:0)} {(distCheck.Checked?1:0)} {meshSlider.Value}",
+                string.Join(" ", pSliders.Select(s => s.Value)),
+            ]);
+        } catch { }
+    }
+
+    void RestoreSettings() {
+        // Lire le fichier AVANT LoadGraph qui écrase les valeurs sauvegardées
+        string[]? L = null;
+        try { L = File.ReadAllLines(SettingsPath); } catch { }
+
+        int graphIdx = 0;
+        if (L != null && L.Length >= 2) {
+            var p0 = L[0].Split(' ');
+            if (p0.Length == 2 && int.TryParse(p0[0], out int w) && int.TryParse(p0[1], out int h))
+                Size = new Size(Math.Max(w, MinimumSize.Width), Math.Max(h, MinimumSize.Height));
+            if (int.TryParse(L[1], out int g) && g >= 0 && g < graphs.Count)
+                graphIdx = g;
+        }
+
+        LoadGraph(graphIdx);   // remet les sliders à leurs défauts (et sauvegarde)
+
+        if (L == null) return;
+        try {
+            // coches + maillage
+            if (L.Length >= 3) {
+                var p2 = L[2].Split(' ');
+                if (p2.Length == 3) {
+                    toutCheck.Checked = p2[0] == "1";
+                    distCheck.Checked = p2[1] == "1";
+                    meshSlider.Value  = Math.Clamp(int.Parse(p2[2]), meshSlider.Minimum, meshSlider.Maximum);
+                }
+            }
+            // sliders a b c d
+            if (L.Length >= 4) {
+                var p3 = L[3].Split(' ');
+                for (int i = 0; i < pSliders.Length && i < p3.Length; i++)
+                    if (int.TryParse(p3[i], out int v))
+                        pSliders[i].Value = Math.Clamp(v, pSliders[i].Minimum, pSliders[i].Maximum);
+            }
+        } catch { }
     }
 
     // ── Layout ────────────────────────────────────────────────────────────
@@ -77,55 +131,62 @@ partial class MainForm : Form
         menuStrip.Items.Add(new ToolStripControlHost(toutCheck));
 
         distCheck = new CheckBox {
-            Text = "courbe de distances", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
+            Text = "distance", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
             AutoSize = true, Padding = new Padding(6, 0, 0, 0)
         };
         distCheck.CheckedChanged += (_, _) => TriggerCompute();
         menuStrip.Items.Add(new ToolStripControlHost(distCheck));
 
-        // slider row — TableLayoutPanel 2 lignes × 4 colonnes
-        // ligne 0 : labels uniquement  /  ligne 1 : sliders verticaux (haut = max)
-        sliderRow = new Panel { Dock = DockStyle.Top, Height = 90, BackColor = AppConfig.SliderBack };
-        var table = new TableLayoutPanel {
-            Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 4,
-            BackColor = AppConfig.SliderBack, Padding = new Padding(0)
+        var meshPanel = new Panel { Width = 180, Height = 60, BackColor = AppConfig.Background };
+        var meshLbl   = new Label {
+            Text = "maillage", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
+            Location = new Point(0, 0), Width = 180, Height = 32,
+            TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 8f)
         };
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 24f));   // ligne 0 : labels
-        table.RowStyles.Add(new RowStyle(SizeType.Percent,  100f));  // ligne 1 : sliders
-        for (int i = 0; i < 4; i++)
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+        meshSlider = new TrackBar {
+            Minimum = 1, Maximum = 10, Value = 1,
+            SmallChange = 1, LargeChange = 1,
+            TickFrequency = 1, TickStyle = TickStyle.TopLeft,
+            Orientation = Orientation.Horizontal,
+            Location = new Point(0, 32), Width = 180, Height = 28, AutoSize = false,
+            BackColor = AppConfig.Background,
+        };
+        meshSlider.ValueChanged += (_, _) => TriggerCompute();
+        meshPanel.Controls.Add(meshLbl);
+        meshPanel.Controls.Add(meshSlider);
+        menuStrip.Items.Add(new ToolStripControlHost(meshPanel));
 
         for (int i = 0; i < 4; i++) {
             int idx = i;
+            var panel = new Panel { Width = 180, Height = 60, BackColor = AppConfig.Background };
             pLabels[i] = new Label {
-                Text = "–", ForeColor = AppConfig.Text, BackColor = AppConfig.SliderBack,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleCenter,
-                Font = new Font("Segoe UI", 9f)
+                Text = "–", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
+                Location = new Point(0, 0), Width = 180, Height = 32,
+                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 8f)
             };
             pSliders[i] = new TrackBar {
                 Minimum = 1, Maximum = 4, Value = 1,
                 SmallChange = 1, LargeChange = 1,
-                TickFrequency = 1, TickStyle = TickStyle.BottomRight,
-                BackColor = AppConfig.SliderBack,
-                Dock = DockStyle.Fill
+                TickFrequency = 1, TickStyle = TickStyle.TopLeft,
+                Orientation = Orientation.Horizontal,
+                Location = new Point(0, 32), Width = 180, Height = 28, AutoSize = false,
+                BackColor = AppConfig.Background,
             };
             pSliders[i].ValueChanged += (_, _) => {
                 if (idx < graphs[activeGraph].Params.Length)
                     pLabels[idx].Text = $"{graphs[activeGraph].Params[idx].Name} = {pSliders[idx].Value}";
                 TriggerCompute();
             };
-            table.Controls.Add(pLabels[i],  i, 0);   // ligne 0
-            table.Controls.Add(pSliders[i], i, 1);   // ligne 1
+            panel.Controls.Add(pLabels[i]);
+            panel.Controls.Add(pSliders[i]);
+            menuStrip.Items.Add(new ToolStripControlHost(panel));
         }
-        sliderRow.Controls.Add(table);
 
         // canvas
         canvas = new GraphCanvas { Dock = DockStyle.Fill, BackColor = AppConfig.CanvasBack };
         canvas.Paint += CanvasPaint;
 
         Controls.Add(canvas);
-        Controls.Add(sliderRow);
         Controls.Add(menuStrip);
         MainMenuStrip = menuStrip;
     }
@@ -147,6 +208,7 @@ partial class MainForm : Form
             pSliders[i].Value   = p.Default;
             pLabels[i].Text     = $"{p.Name} = {p.Default}";
         }
+        SaveSettings();
         TriggerCompute();
     }
 
@@ -181,22 +243,29 @@ partial class MainForm : Form
                 } catch (OperationCanceledException) { return; }
                 sw.Stop();
                 if (token.IsCancellationRequested) return;
-                Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={cellN} | {g.FormulaTemplate}");
+                Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={cellN}");
                 RenderGrid(allPts, cols, rows, iw, ih, token);
             }, token);
         } else {
             gridCombos = null;
             var g    = graphs[activeGraph];
             var vals = pSliders.Take(g.Params.Length).Select(s => s.Value).ToArray();
-            bool showDist = distCheck.Checked;
+            bool showDist  = distCheck.Checked;
+            int  meshLevel = meshSlider.Value;
             Task.Run(() => {
                 if (token.IsCancellationRequested) return;
                 var sw  = System.Diagnostics.Stopwatch.StartNew();
                 var pts = g.Compute(vals, iw, ih);
                 sw.Stop();
+                PointF[][]? meshPts = null;
+                if (meshLevel > 1) {
+                    meshPts = new PointF[meshLevel - 1][];
+                    for (int k = 1; k < meshLevel; k++)
+                        meshPts[k - 1] = g.Compute(vals, iw, ih, pts.Length, (double)k / meshLevel);
+                }
                 if (!token.IsCancellationRequested) {
-                    Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={pts.Length} | {g.Formula(vals)}");
-                    RenderCanvas(pts, iw, ih, token, showDist);
+                    Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={pts.Length}");
+                    RenderCanvas(pts, iw, ih, token, showDist, meshPts);
                 }
             }, token);
         }

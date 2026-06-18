@@ -5,7 +5,7 @@ partial class MainForm
 {
     Bitmap? canvasBmp;
 
-    void RenderCanvas(PointF[] pts, int w, int h, CancellationToken token, bool showDist = false)
+    void RenderCanvas(PointF[] pts, int w, int h, CancellationToken token, bool showDist = false, PointF[][]? meshPts = null)
     {
         if (w <= 0 || h <= 0 || token.IsCancellationRequested) return;
 
@@ -14,14 +14,27 @@ partial class MainForm
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(AppConfig.CanvasBack);
 
+        using var pen = new Pen(AppConfig.CurveColor, 1.2f);
+
         if (pts.Length >= 2) {
-            using var pen = new Pen(AppConfig.CurveColor, 1.2f);
             const int Chunk = 8192;
             for (int i = 0; i + 1 < pts.Length; i += Chunk - 1) {
                 if (token.IsCancellationRequested) { bmp.Dispose(); return; }
                 int len = Math.Min(Chunk, pts.Length - i);
                 if (len < 2) break;
                 g.DrawLines(pen, pts[i..(i + len)]);
+            }
+        }
+
+        if (meshPts != null) {
+            const int Chunk = 8192;
+            foreach (var mpts in meshPts) {
+                for (int i = 0; i + 1 < mpts.Length; i += Chunk - 1) {
+                    if (token.IsCancellationRequested) { bmp.Dispose(); return; }
+                    int len = Math.Min(Chunk, mpts.Length - i);
+                    if (len < 2) break;
+                    g.DrawLines(pen, mpts[i..(i + len)]);
+                }
             }
         }
 

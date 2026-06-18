@@ -44,7 +44,7 @@ class HarmoniqueGraph : Graph
         $"x={Fn((variant>>0)&1)}(a·t)·{Fn((variant>>1)&1)}(b·t)   " +
         $"y={Fn((variant>>2)&1)}(c·t)·{Fn((variant>>3)&1)}(d·t)";
 
-    public override PointF[] Compute(int[] v, float width, float height, int n = 0)
+    public override PointF[] Compute(int[] v, float width, float height, int n = 0, double offset = 0.0)
     {
         double a = v[0], b = v[1], c = v[2], d = v[3];
         int N = n > 0 ? n : 1_000;
@@ -53,7 +53,7 @@ class HarmoniqueGraph : Graph
         double rx = width  * 0.45, ry = height * 0.45;
 
         for (int i = 0; i < N; i++) {
-            double t = i;
+            double t = i + offset;
             pts[i] = new PointF(
                 (float)(cx + T((variant >> 0) & 1, a * t) * T((variant >> 1) & 1, b * t) * rx),
                 (float)(cy - T((variant >> 2) & 1, c * t) * T((variant >> 3) & 1, d * t) * ry));
