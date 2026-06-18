@@ -5,7 +5,7 @@ partial class MainForm
 {
     Bitmap? canvasBmp;
 
-    void RenderCanvas(PointF[] pts, int w, int h, CancellationToken token)
+    void RenderCanvas(PointF[] pts, int w, int h, CancellationToken token, bool showDist = false)
     {
         if (w <= 0 || h <= 0 || token.IsCancellationRequested) return;
 
@@ -22,6 +22,32 @@ partial class MainForm
                 int len = Math.Min(Chunk, pts.Length - i);
                 if (len < 2) break;
                 g.DrawLines(pen, pts[i..(i + len)]);
+            }
+        }
+
+        if (showDist && pts.Length >= 2) {
+            float refX = pts[0].X, refY = pts[0].Y;
+            var dists = new float[pts.Length];
+            float maxD = 0f;
+            for (int i = 0; i < pts.Length; i++) {
+                float dx = pts[i].X - refX, dy = pts[i].Y - refY;
+                dists[i] = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dists[i] > maxD) maxD = dists[i];
+            }
+            if (maxD > 0.001f) {
+                var distPts = new PointF[pts.Length];
+                float xScale = (w - 1f) / (pts.Length - 1);
+                float yScale  = (h - 4f) / maxD;
+                for (int i = 0; i < pts.Length; i++)
+                    distPts[i] = new PointF(i * xScale, h - 2f - dists[i] * yScale);
+                using var distPen = new Pen(Color.FromArgb(255, 160, 40), 1f);
+                const int Chunk = 8192;
+                for (int i = 0; i + 1 < distPts.Length; i += Chunk - 1) {
+                    if (token.IsCancellationRequested) { bmp.Dispose(); return; }
+                    int len = Math.Min(Chunk, distPts.Length - i);
+                    if (len < 2) break;
+                    g.DrawLines(distPen, distPts[i..(i + len)]);
+                }
             }
         }
 
@@ -43,6 +69,7 @@ partial class MainForm
         var bmp = new Bitmap(w, h);
         using var g   = Graphics.FromImage(bmp);
         using var pen = new Pen(AppConfig.CurveColor, 0.8f);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(AppConfig.CanvasBack);
 
         for (int i = 0; i < allPts.Length; i++) {

@@ -8,6 +8,7 @@ partial class MainForm : Form
     GraphCanvas       canvas    = null!;
     ToolStripMenuItem graphMenu = null!;
     CheckBox          toutCheck = null!;
+    CheckBox          distCheck = null!;
     ToolStripLabel    timeLbl   = null!;
     Label[]           pLabels   = new Label[4];
     TrackBar[]        pSliders  = new TrackBar[4];
@@ -74,6 +75,13 @@ partial class MainForm : Form
         };
         toutCheck.CheckedChanged += (_, _) => TriggerCompute();
         menuStrip.Items.Add(new ToolStripControlHost(toutCheck));
+
+        distCheck = new CheckBox {
+            Text = "courbe de distances", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
+            AutoSize = true, Padding = new Padding(6, 0, 0, 0)
+        };
+        distCheck.CheckedChanged += (_, _) => TriggerCompute();
+        menuStrip.Items.Add(new ToolStripControlHost(distCheck));
 
         // slider row — TableLayoutPanel 2 lignes × 4 colonnes
         // ligne 0 : labels uniquement  /  ligne 1 : sliders verticaux (haut = max)
@@ -180,6 +188,7 @@ partial class MainForm : Form
             gridCombos = null;
             var g    = graphs[activeGraph];
             var vals = pSliders.Take(g.Params.Length).Select(s => s.Value).ToArray();
+            bool showDist = distCheck.Checked;
             Task.Run(() => {
                 if (token.IsCancellationRequested) return;
                 var sw  = System.Diagnostics.Stopwatch.StartNew();
@@ -187,7 +196,7 @@ partial class MainForm : Form
                 sw.Stop();
                 if (!token.IsCancellationRequested) {
                     Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={pts.Length} | {g.Formula(vals)}");
-                    RenderCanvas(pts, iw, ih, token);
+                    RenderCanvas(pts, iw, ih, token, showDist);
                 }
             }, token);
         }
