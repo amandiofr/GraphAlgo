@@ -5,13 +5,13 @@ partial class MainForm : Form
     // ── Controls ──────────────────────────────────────────────────────────
     MenuStrip          menuStrip  = null!;
     GraphCanvas        canvas     = null!;
-    ToolStripMenuItem  graphMenu  = null!;
+    ComboBox           graphCombo = null!;
     CheckBox           toutCheck  = null!;
     CheckBox           distCheck  = null!;
-    TrackBar           meshSlider = null!;
-    ToolStripLabel     timeLbl    = null!;
-    Label[]            pLabels    = new Label[4];
-    TrackBar[]         pSliders   = new TrackBar[4];
+    NumericUpDown      meshInput  = null!;
+    NumericUpDown      nInput     = null!;
+    ToolStripLabel[]   pLabels    = new ToolStripLabel[4];
+    NumericUpDown[]    pInputs    = new NumericUpDown[4];
 
     // ── State ─────────────────────────────────────────────────────────────
     readonly List<Graph> graphs = Enumerable.Range(0, 16)
@@ -64,8 +64,8 @@ partial class MainForm : Form
             File.WriteAllLines(SettingsPath, [
                 $"{Width} {Height}",
                 $"{activeGraph}",
-                $"{(toutCheck.Checked?1:0)} {(distCheck.Checked?1:0)} {meshSlider.Value}",
-                string.Join(" ", pSliders.Select(s => s.Value)),
+                $"{(toutCheck.Checked?1:0)} {(distCheck.Checked?1:0)} {(int)meshInput.Value}",
+                string.Join(" ", pInputs.Select(s => (int)s.Value)),
             ]);
         } catch { }
     }
@@ -94,15 +94,15 @@ partial class MainForm : Form
                 if (p2.Length == 3) {
                     toutCheck.Checked = p2[0] == "1";
                     distCheck.Checked = p2[1] == "1";
-                    meshSlider.Value  = Math.Clamp(int.Parse(p2[2]), meshSlider.Minimum, meshSlider.Maximum);
+                    meshInput.Value  = Math.Clamp(int.Parse(p2[2]), (int)meshInput.Minimum, (int)meshInput.Maximum);
                 }
             }
             // sliders a b c d
             if (L.Length >= 4) {
                 var p3 = L[3].Split(' ');
-                for (int i = 0; i < pSliders.Length && i < p3.Length; i++)
+                for (int i = 0; i < pInputs.Length && i < p3.Length; i++)
                     if (int.TryParse(p3[i], out int v))
-                        pSliders[i].Value = Math.Clamp(v, pSliders[i].Minimum, pSliders[i].Maximum);
+                        pInputs[i].Value = Math.Clamp(v, (int)pInputs[i].Minimum, (int)pInputs[i].Maximum);
             }
         } catch { }
     }
@@ -112,16 +112,28 @@ partial class MainForm : Form
     {
         // menu
         menuStrip = new MenuStrip { BackColor = AppConfig.Background, ForeColor = AppConfig.Text };
-        graphMenu = new ToolStripMenuItem("Graphes");
-        for (int i = 0; i < graphs.Count; i++) {
-            int idx = i;
-            graphMenu.DropDownItems.Add(
-                new ToolStripMenuItem(graphs[i].Name, null, (_, _) => LoadGraph(idx)));
-        }
-        menuStrip.Items.Add(graphMenu);
+        graphCombo = new ComboBox {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            BackColor = AppConfig.CanvasBack, ForeColor = AppConfig.Text,
+            Font = new Font("Segoe UI", 9f), Width = 360,
+        };
+        foreach (var g in graphs)
+            graphCombo.Items.Add(g.Name);
+        graphCombo.SelectedIndex = 0;
+        graphCombo.SelectedIndexChanged += (_, _) => {
+            if (graphCombo.SelectedIndex != activeGraph)
+                LoadGraph(graphCombo.SelectedIndex);
+        };
+        menuStrip.Items.Add(new ToolStripControlHost(graphCombo));
 
-        timeLbl = new ToolStripLabel { ForeColor = AppConfig.Text, Alignment = ToolStripItemAlignment.Right };
-        menuStrip.Items.Add(timeLbl);
+        nInput = new NumericUpDown {
+            Minimum = 10, Maximum = 100000, Value = 532,
+            Width = 80, BackColor = AppConfig.CanvasBack, ForeColor = AppConfig.Text,
+            Font = new Font("Segoe UI", 9f),
+        };
+        nInput.ValueChanged += (_, _) => TriggerCompute();
+        menuStrip.Items.Add(new ToolStripLabel("N") { ForeColor = AppConfig.Text, Alignment = ToolStripItemAlignment.Right, Margin = new Padding(8, 0, 2, 0) });
+        menuStrip.Items.Add(new ToolStripControlHost(nInput) { Alignment = ToolStripItemAlignment.Right });
 
         toutCheck = new CheckBox {
             Text = "Tout", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
@@ -137,49 +149,25 @@ partial class MainForm : Form
         distCheck.CheckedChanged += (_, _) => TriggerCompute();
         menuStrip.Items.Add(new ToolStripControlHost(distCheck));
 
-        var meshPanel = new Panel { Width = 180, Height = 60, BackColor = AppConfig.Background };
-        var meshLbl   = new Label {
-            Text = "maillage", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
-            Location = new Point(0, 0), Width = 180, Height = 32,
-            TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 8f)
-        };
-        meshSlider = new TrackBar {
+        menuStrip.Items.Add(new ToolStripLabel("maillage") { ForeColor = AppConfig.Text, Margin = new Padding(8, 0, 2, 0) });
+        meshInput = new NumericUpDown {
             Minimum = 1, Maximum = 10, Value = 1,
-            SmallChange = 1, LargeChange = 1,
-            TickFrequency = 1, TickStyle = TickStyle.TopLeft,
-            Orientation = Orientation.Horizontal,
-            Location = new Point(0, 32), Width = 180, Height = 28, AutoSize = false,
-            BackColor = AppConfig.Background,
+            Width = 65, BackColor = AppConfig.CanvasBack, ForeColor = AppConfig.Text,
+            Font = new Font("Segoe UI", 9f),
         };
-        meshSlider.ValueChanged += (_, _) => TriggerCompute();
-        meshPanel.Controls.Add(meshLbl);
-        meshPanel.Controls.Add(meshSlider);
-        menuStrip.Items.Add(new ToolStripControlHost(meshPanel));
+        meshInput.ValueChanged += (_, _) => TriggerCompute();
+        menuStrip.Items.Add(new ToolStripControlHost(meshInput));
 
         for (int i = 0; i < 4; i++) {
-            int idx = i;
-            var panel = new Panel { Width = 180, Height = 60, BackColor = AppConfig.Background };
-            pLabels[i] = new Label {
-                Text = "–", ForeColor = AppConfig.Text, BackColor = AppConfig.Background,
-                Location = new Point(0, 0), Width = 180, Height = 32,
-                TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 8f)
-            };
-            pSliders[i] = new TrackBar {
+            pLabels[i] = new ToolStripLabel("–") { ForeColor = AppConfig.Text, Margin = new Padding(8, 0, 2, 0) };
+            menuStrip.Items.Add(pLabels[i]);
+            pInputs[i] = new NumericUpDown {
                 Minimum = 1, Maximum = 4, Value = 1,
-                SmallChange = 1, LargeChange = 1,
-                TickFrequency = 1, TickStyle = TickStyle.TopLeft,
-                Orientation = Orientation.Horizontal,
-                Location = new Point(0, 32), Width = 180, Height = 28, AutoSize = false,
-                BackColor = AppConfig.Background,
+                Width = 65, BackColor = AppConfig.CanvasBack, ForeColor = AppConfig.Text,
+                Font = new Font("Segoe UI", 9f),
             };
-            pSliders[i].ValueChanged += (_, _) => {
-                if (idx < graphs[activeGraph].Params.Length)
-                    pLabels[idx].Text = $"{graphs[activeGraph].Params[idx].Name} = {pSliders[idx].Value}";
-                TriggerCompute();
-            };
-            panel.Controls.Add(pLabels[i]);
-            panel.Controls.Add(pSliders[i]);
-            menuStrip.Items.Add(new ToolStripControlHost(panel));
+            pInputs[i].ValueChanged += (_, _) => TriggerCompute();
+            menuStrip.Items.Add(new ToolStripControlHost(pInputs[i]));
         }
 
         // canvas
@@ -197,16 +185,15 @@ partial class MainForm : Form
         activeGraph = idx;
         var g = graphs[idx];
 
-        foreach (ToolStripMenuItem item in graphMenu.DropDownItems)
-            item.Checked = false;
-        ((ToolStripMenuItem)graphMenu.DropDownItems[idx]).Checked = true;
+        if (graphCombo.SelectedIndex != idx)
+            graphCombo.SelectedIndex = idx;
 
         for (int i = 0; i < g.Params.Length; i++) {
             var p = g.Params[i];
-            pSliders[i].Minimum = p.Min;
-            pSliders[i].Maximum = p.Max;
-            pSliders[i].Value   = p.Default;
-            pLabels[i].Text     = $"{p.Name} = {p.Default}";
+            pInputs[i].Minimum = p.Min;
+            pInputs[i].Maximum = p.Max;
+            pInputs[i].Value   = p.Default;
+            pLabels[i].Text    = p.Name;
         }
         SaveSettings();
         TriggerCompute();
@@ -232,41 +219,35 @@ partial class MainForm : Form
             int cellH = ih / rows;
             if (cellW <= 0 || cellH <= 0) return;
             gridCols = cols; gridRows = rows; gridCombos = combos;
-            int cellN = Math.Max(50, Math.Max(cellW, cellH) * 2);   // points adaptés à la taille
+            int cellN = (int)nInput.Value;
             Task.Run(() => {
                 var allPts = new PointF[total][];
                 var opts   = new ParallelOptions { CancellationToken = token,
                                                    MaxDegreeOfParallelism = Environment.ProcessorCount };
-                var sw = System.Diagnostics.Stopwatch.StartNew();
                 try {
                     Parallel.For(0, total, opts, i => allPts[i] = g.Compute(combos[i], cellW, cellH, cellN));
                 } catch (OperationCanceledException) { return; }
-                sw.Stop();
                 if (token.IsCancellationRequested) return;
-                Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={cellN}");
                 RenderGrid(allPts, cols, rows, iw, ih, token);
             }, token);
         } else {
             gridCombos = null;
             var g    = graphs[activeGraph];
-            var vals = pSliders.Take(g.Params.Length).Select(s => s.Value).ToArray();
+            var vals = pInputs.Take(g.Params.Length).Select(s => (int)s.Value).ToArray();
             bool showDist  = distCheck.Checked;
-            int  meshLevel = meshSlider.Value;
+            int  meshLevel = (int)meshInput.Value;
+            int  n         = (int)nInput.Value;
             Task.Run(() => {
                 if (token.IsCancellationRequested) return;
-                var sw  = System.Diagnostics.Stopwatch.StartNew();
-                var pts = g.Compute(vals, iw, ih);
-                sw.Stop();
+                var pts = g.Compute(vals, iw, ih, n);
                 PointF[][]? meshPts = null;
                 if (meshLevel > 1) {
                     meshPts = new PointF[meshLevel - 1][];
                     for (int k = 1; k < meshLevel; k++)
-                        meshPts[k - 1] = g.Compute(vals, iw, ih, pts.Length, (double)k / meshLevel);
+                        meshPts[k - 1] = g.Compute(vals, iw, ih, n, (double)k / meshLevel);
                 }
-                if (!token.IsCancellationRequested) {
-                    Invoke(() => timeLbl.Text = $"calcul : {sw.ElapsedMilliseconds} ms | N={pts.Length}");
+                if (!token.IsCancellationRequested)
                     RenderCanvas(pts, iw, ih, token, showDist, meshPts);
-                }
             }, token);
         }
     }
@@ -286,7 +267,7 @@ partial class MainForm : Form
 
         toutCheck.Checked = false;                          // décoche → TriggerCompute (annulé ensuite)
         for (int i = 0; i < g.Params.Length && i < combo.Length; i++)
-            pSliders[i].Value = combo[i];                   // dernier TriggerCompute gagne ✓
+            pInputs[i].Value = combo[i];                    // dernier TriggerCompute gagne ✓
     }
 
     static List<int[]> EnumerateCombinations(Graph g)

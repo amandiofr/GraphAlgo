@@ -1,5 +1,4 @@
 using System.Drawing.Drawing2D;
-using System.Diagnostics;
 
 partial class MainForm
 {
@@ -78,7 +77,6 @@ partial class MainForm
         int cellW = w / cols;
         int cellH = h / rows;
 
-        var sw  = Stopwatch.StartNew();
         var bmp = new Bitmap(w, h);
         using var g   = Graphics.FromImage(bmp);
         using var pen = new Pen(AppConfig.CurveColor, 0.8f);
@@ -101,18 +99,11 @@ partial class MainForm
         }
         g.ResetTransform();
         g.ResetClip();
-        sw.Stop();
 
         if (token.IsCancellationRequested) { bmp.Dispose(); return; }
-        long renderMs = sw.ElapsedMilliseconds;
         canvas.Invoke(() => {
             var old = canvasBmp; canvasBmp = bmp; old?.Dispose();
             canvas.Invalidate();
-        });
-        Invoke(() => {
-            string t  = timeLbl.Text ?? "";
-            int    ri = t.LastIndexOf(" | rendu");
-            timeLbl.Text = (ri >= 0 ? t[..ri] : t) + $" | rendu : {renderMs} ms";
         });
     }
 
